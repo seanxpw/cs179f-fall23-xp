@@ -4,8 +4,7 @@
         {
             "label": "compile xv6 and run in debug mode",
             "command": "bash",
-            "args": [
-                "-c",
+            "args": [    "-c",
                 "make qemu-gdb"
             ],
             "presentation": {

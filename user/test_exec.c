@@ -1,3 +1,5 @@
+// exec() receives an arglist that ends with 0.
+
 #include "kernel/types.h"
 #include "user/user.h" // exec fork
 #include "kernel/param.h"
@@ -15,16 +17,17 @@ int main(int argc, char** argv)
     ecmd->argv[1]= "hello";
     ecmd->argv[2]= "world";
     
-    // char* list[3];
-    // list[0] = "echo";
-    // list[1] = "hello\n";
-    // list[2] = "world\n";
+    char* list[4];
+    list[0] = "echo";
+    list[1] = "hello";
+    list[2] = "world";
+    list[3] = 0; // if we don't add this, exec fails.
     if(fork()==0)
     {
-        // int a = 100;
-        exec(ecmd->argv[0],ecmd->argv);
-        //CANNOT exec("echo", list);
-        // printf("child ends with exec %d\n", a);
+        int a = 100;
+        // exec(ecmd->argv[0],ecmd->argv);
+        a = exec(list[0], list);
+        printf("child ends with exec %d\n", a);
         exit();
     }
     else
