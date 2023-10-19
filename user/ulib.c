@@ -3,6 +3,7 @@
 #include "kernel/fcntl.h"
 #include "user/user.h"
 
+// strcpy(char *s, const char *t), copy t to s
 char*
 strcpy(char *s, const char *t)
 {
@@ -22,8 +23,7 @@ strcmp(const char *p, const char *q)
   return (uchar)*p - (uchar)*q;
 }
 
-uint
-strlen(const char *s)
+uint strlen(const char *s)
 {
   int n;
 

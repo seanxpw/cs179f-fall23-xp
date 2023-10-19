@@ -149,15 +149,16 @@ main(void)
   int fd;
 
   // Ensure that three file descriptors are open.
-  while((fd = open("console", O_RDWR)) >= 0){
+  while((fd = open("console", O_RDWR)) >= 0){ // O_RDWR: Open for reading and writing
     if(fd >= 3){
       close(fd);
-      break;
+      break; // if the fd>=3, it means the 0, 1, 2 is opened.
     }
   }
+  // When the loop finishes, file descriptors 0 to 2 (stdin, stdout and stderr) are guaranteed to be open.
 
   // Read and run input commands.
-  while(getcmd(buf, sizeof(buf)) >= 0){
+  while(getcmd(buf, sizeof(buf)) >= 0){ // Why >= but not ==
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n

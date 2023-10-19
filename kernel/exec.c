@@ -12,6 +12,7 @@ static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uin
 int
 exec(char *path, char **argv)
 {
+  // printf("start exec\n");
   char *s, *last;
   int i, off;
   uint64 argc, sz, sp, ustack[MAXARG+1], stackbase;
@@ -25,8 +26,9 @@ exec(char *path, char **argv)
 
   if((ip = namei(path)) == 0){
     end_op(ROOTDEV);
-    return -1;
+    return -2;
   }
+  
   ilock(ip);
 
   // Check ELF header
@@ -38,6 +40,8 @@ exec(char *path, char **argv)
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
+  // printf("good1\n");
+
   // Load program into memory.
   sz = 0;
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -47,6 +51,8 @@ exec(char *path, char **argv)
       continue;
     if(ph.memsz < ph.filesz)
       goto bad;
+
+    // printf("good2\n");  
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
     if((sz = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
@@ -60,6 +66,8 @@ exec(char *path, char **argv)
   end_op(ROOTDEV);
   ip = 0;
 
+      // printf("good3\n"); 
+
   p = myproc();
   uint64 oldsz = p->sz;
 
@@ -71,9 +79,11 @@ exec(char *path, char **argv)
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;
   stackbase = sp - PGSIZE;
-
+      // printf("good4\n"); 
   // Push argument strings, prepare rest of stack in ustack.
-  for(argc = 0; argv[argc]; argc++) {
+  for(argc = 0; argv[argc]; argc++) 
+  {
+    // printf("in loop argc=%d\n",argc);
     if(argc >= MAXARG)
       goto bad;
     sp -= strlen(argv[argc]) + 1;
@@ -86,6 +96,8 @@ exec(char *path, char **argv)
   }
   ustack[argc] = 0;
 
+  // printf("good5\n"); 
+
   // push the array of argv[] pointers.
   sp -= (argc+1) * sizeof(uint64);
   sp -= sp % 16;
@@ -93,7 +105,7 @@ exec(char *path, char **argv)
     goto bad;
   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
     goto bad;
-
+  // printf("good6\n"); 
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
@@ -104,7 +116,7 @@ exec(char *path, char **argv)
     if(*s == '/')
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
-    
+      // printf("good7\n"); 
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
@@ -112,16 +124,18 @@ exec(char *path, char **argv)
   p->tf->epc = elf.entry;  // initial program counter = main
   p->tf->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+  // printf("argc = %d",argc);
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
+//  printf("bad\n");
   if(pagetable)
     proc_freepagetable(pagetable, sz);
   if(ip){
     iunlockput(ip);
     end_op(ROOTDEV);
   }
-  return -1;
+  return -10;
 }
 
 // Load a program segment into pagetable at virtual address va.
@@ -146,7 +160,14 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
     else
       n = PGSIZE;
     if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
+    {
+      
+      // printf("\n");
       return -1;
+
+    }
+
+      
   }
   
   return 0;

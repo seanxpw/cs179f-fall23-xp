@@ -44,6 +44,7 @@ ls(char *path)
   switch(st.type){
   case T_FILE:
     printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
+    //fmtname(path) returns the pure name of the file.
     break;
 
   case T_DIR:
@@ -52,8 +53,8 @@ ls(char *path)
       break;
     }
     strcpy(buf, path);
-    p = buf+strlen(buf);
-    *p++ = '/';
+    p = buf+strlen(buf); // now p points '\0' at the end of buf
+    *p++ = '/'; // '\0' becomes '/', then point to the next
     while(read(fd, &de, sizeof(de)) == sizeof(de)){
       if(de.inum == 0)
         continue;

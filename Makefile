@@ -140,6 +140,11 @@ UPROGS=\
 	$U/_bcachetest\
 	$U/_mounttest\
 	$U/_crashtest\
+	$U/_helloworld\
+	$U/_sleep\
+	$U/_find\
+	$U/_xargs\
+	$U/_test_exec\
 
 fs.img: mkfs/mkfs README user/xargstest.sh $(UPROGS)
 	mkfs/mkfs fs.img README user/xargstest.sh $(UPROGS)
