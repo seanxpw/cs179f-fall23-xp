@@ -10,6 +10,88 @@ index fc565fa..f96d18a 100644
  vectors.S
  bootblock
  entryother
+diff --git a/.vscode/launch.json b/.vscode/launch.json
+new file mode 100644
+index 0000000..f4c888f
+--- /dev/null
++++ b/.vscode/launch.json
+@@ -0,0 +1,30 @@
++{
++    "version": "0.2.0",
++    "configurations": [
++        {
++            "name": "debug xv6",
++            "type": "cppdbg",
++            "request": "launch",
++            "program": "${workspaceFolder}/kernel/kernel",
++            "args": [],
++            "stopAtEntry": true,
++            "cwd": "${workspaceFolder}",
++            "miDebuggerServerAddress": "localhost:26233",
++            "miDebuggerPath": "/usr/local/pkgs/riscv-gnu-toolchain/bin/riscv64-unknown-elf-gdb",
++            "environment": [],
++            "externalConsole": false,
++            "MIMode": "gdb",
++            "setupCommands": [
++                {
++                    "description": "pretty printing",
++                    "text": "-enable-pretty-printing",
++                    "ignoreFailures": true
++                }
++            ],
++            "logging": {
++                // "engineLogging": true,
++                // "programOutput": true,
++            }
++        }
++    ]
++}
+\ No newline at end of file
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+new file mode 100644
+index 0000000..ff94ccd
+--- /dev/null
++++ b/.vscode/settings.json
+@@ -0,0 +1,7 @@
++{
++    "files.associations": {
++        "fs.h": "c",
++        "user.h": "c",
++        "fcntl.h": "c"
++    }
++}
+\ No newline at end of file
+diff --git a/.vscode/tasks.json b/.vscode/tasks.json
+new file mode 100644
+index 0000000..a309968
+--- /dev/null
++++ b/.vscode/tasks.json
+@@ -0,0 +1,24 @@
++{
++    "version": "2.0.0",
++    "tasks": [
++        {
++            "label": "compile xv6 and run in debug mode",
++            "command": "bash",
++            "args": [    "-c",
++                "make qemu-gdb"
++            ],
++            "presentation": {
++                "echo": true,
++                "reveal": "always",
++                "focus": true,
++                "panel": "new",
++                "showReuseMessage": true,
++                "clear": true
++            },
++            "group": {
++                "kind": "build",
++                "isDefault": true
++            }
++        }
++    ]
++}
+\ No newline at end of file
 diff --git a/Makefile b/Makefile
 index dcaa3dc..5ec0742 100644
 --- a/Makefile
@@ -26,6 +108,244 @@ index dcaa3dc..5ec0742 100644
  
  fs.img: mkfs/mkfs README user/xargstest.sh $(UPROGS)
  	mkfs/mkfs fs.img README user/xargstest.sh $(UPROGS)
+diff --git a/diff.txt b/diff.txt
+new file mode 100644
+index 0000000..a5955f9
+--- /dev/null
++++ b/diff.txt
+@@ -0,0 +1,232 @@
++diff --git a/.gitignore b/.gitignore
++index fc565fa..f96d18a 100644
++--- a/.gitignore
+++++ b/.gitignore
++@@ -5,6 +5,7 @@ _*
++ *.asm
++ *.sym
++ *.img
+++*.pyc
++ vectors.S
++ bootblock
++ entryother
++diff --git a/Makefile b/Makefile
++index dcaa3dc..5ec0742 100644
++--- a/Makefile
+++++ b/Makefile
++@@ -140,6 +140,11 @@ UPROGS=\
++ 	$U/_bcachetest\
++ 	$U/_mounttest\
++ 	$U/_crashtest\
+++	$U/_helloworld\
+++	$U/_sleep\
+++	$U/_find\
+++	$U/_xargs\
+++	$U/_test_exec\
++ 
++ fs.img: mkfs/mkfs README user/xargstest.sh $(UPROGS)
++ 	mkfs/mkfs fs.img README user/xargstest.sh $(UPROGS)
++diff --git a/kernel/exec.c b/kernel/exec.c
++index 614f7ca..073d1b4 100644
++--- a/kernel/exec.c
+++++ b/kernel/exec.c
++@@ -12,6 +12,7 @@ static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uin
++ int
++ exec(char *path, char **argv)
++ {
+++  // printf("start exec\n");
++   char *s, *last;
++   int i, off;
++   uint64 argc, sz, sp, ustack[MAXARG+1], stackbase;
++@@ -25,8 +26,9 @@ exec(char *path, char **argv)
++ 
++   if((ip = namei(path)) == 0){
++     end_op(ROOTDEV);
++-    return -1;
+++    return -2;
++   }
+++  
++   ilock(ip);
++ 
++   // Check ELF header
++@@ -38,6 +40,8 @@ exec(char *path, char **argv)
++   if((pagetable = proc_pagetable(p)) == 0)
++     goto bad;
++ 
+++  // printf("good1\n");
+++
++   // Load program into memory.
++   sz = 0;
++   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
++@@ -47,6 +51,8 @@ exec(char *path, char **argv)
++       continue;
++     if(ph.memsz < ph.filesz)
++       goto bad;
+++
+++    // printf("good2\n");  
++     if(ph.vaddr + ph.memsz < ph.vaddr)
++       goto bad;
++     if((sz = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
++@@ -60,6 +66,8 @@ exec(char *path, char **argv)
++   end_op(ROOTDEV);
++   ip = 0;
++ 
+++      // printf("good3\n"); 
+++
++   p = myproc();
++   uint64 oldsz = p->sz;
++ 
++@@ -71,9 +79,11 @@ exec(char *path, char **argv)
++   uvmclear(pagetable, sz-2*PGSIZE);
++   sp = sz;
++   stackbase = sp - PGSIZE;
++-
+++      // printf("good4\n"); 
++   // Push argument strings, prepare rest of stack in ustack.
++-  for(argc = 0; argv[argc]; argc++) {
+++  for(argc = 0; argv[argc]; argc++) 
+++  {
+++    // printf("in loop argc=%d\n",argc);
++     if(argc >= MAXARG)
++       goto bad;
++     sp -= strlen(argv[argc]) + 1;
++@@ -86,6 +96,8 @@ exec(char *path, char **argv)
++   }
++   ustack[argc] = 0;
++ 
+++  // printf("good5\n"); 
+++
++   // push the array of argv[] pointers.
++   sp -= (argc+1) * sizeof(uint64);
++   sp -= sp % 16;
++@@ -93,7 +105,7 @@ exec(char *path, char **argv)
++     goto bad;
++   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
++     goto bad;
++-
+++  // printf("good6\n"); 
++   // arguments to user main(argc, argv)
++   // argc is returned via the system call return
++   // value, which goes in a0.
++@@ -104,7 +116,7 @@ exec(char *path, char **argv)
++     if(*s == '/')
++       last = s+1;
++   safestrcpy(p->name, last, sizeof(p->name));
++-    
+++      // printf("good7\n"); 
++   // Commit to the user image.
++   oldpagetable = p->pagetable;
++   p->pagetable = pagetable;
++@@ -112,16 +124,18 @@ exec(char *path, char **argv)
++   p->tf->epc = elf.entry;  // initial program counter = main
++   p->tf->sp = sp; // initial stack pointer
++   proc_freepagetable(oldpagetable, oldsz);
+++  // printf("argc = %d",argc);
++   return argc; // this ends up in a0, the first argument to main(argc, argv)
++ 
++  bad:
+++//  printf("bad\n");
++   if(pagetable)
++     proc_freepagetable(pagetable, sz);
++   if(ip){
++     iunlockput(ip);
++     end_op(ROOTDEV);
++   }
++-  return -1;
+++  return -10;
++ }
++ 
++ // Load a program segment into pagetable at virtual address va.
++@@ -146,7 +160,14 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
++     else
++       n = PGSIZE;
++     if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
+++    {
+++      
+++      // printf("\n");
++       return -1;
+++
+++    }
+++
+++      
++   }
++   
++   return 0;
++diff --git a/user/ls.c b/user/ls.c
++index 5847555..fa4d19f 100644
++--- a/user/ls.c
+++++ b/user/ls.c
++@@ -44,6 +44,7 @@ ls(char *path)
++   switch(st.type){
++   case T_FILE:
++     printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
+++    //fmtname(path) returns the pure name of the file.
++     break;
++ 
++   case T_DIR:
++@@ -52,8 +53,8 @@ ls(char *path)
++       break;
++     }
++     strcpy(buf, path);
++-    p = buf+strlen(buf);
++-    *p++ = '/';
+++    p = buf+strlen(buf); // now p points '\0' at the end of buf
+++    *p++ = '/'; // '\0' becomes '/', then point to the next
++     while(read(fd, &de, sizeof(de)) == sizeof(de)){
++       if(de.inum == 0)
++         continue;
++diff --git a/user/sh.c b/user/sh.c
++index dde17be..d29c607 100644
++--- a/user/sh.c
+++++ b/user/sh.c
++@@ -149,15 +149,16 @@ main(void)
++   int fd;
++ 
++   // Ensure that three file descriptors are open.
++-  while((fd = open("console", O_RDWR)) >= 0){
+++  while((fd = open("console", O_RDWR)) >= 0){ // O_RDWR: Open for reading and writing
++     if(fd >= 3){
++       close(fd);
++-      break;
+++      break; // if the fd>=3, it means the 0, 1, 2 is opened.
++     }
++   }
+++  // When the loop finishes, file descriptors 0 to 2 (stdin, stdout and stderr) are guaranteed to be open.
++ 
++   // Read and run input commands.
++-  while(getcmd(buf, sizeof(buf)) >= 0){
+++  while(getcmd(buf, sizeof(buf)) >= 0){ // Why >= but not ==
++     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
++       // Chdir must be called by the parent, not the child.
++       buf[strlen(buf)-1] = 0;  // chop \n
++diff --git a/user/ulib.c b/user/ulib.c
++index ddda0f5..e1be04b 100644
++--- a/user/ulib.c
+++++ b/user/ulib.c
++@@ -3,6 +3,7 @@
++ #include "kernel/fcntl.h"
++ #include "user/user.h"
++ 
+++// strcpy(char *s, const char *t), copy t to s
++ char*
++ strcpy(char *s, const char *t)
++ {
++@@ -22,8 +23,7 @@ strcmp(const char *p, const char *q)
++   return (uchar)*p - (uchar)*q;
++ }
++ 
++-uint
++-strlen(const char *s)
+++uint strlen(const char *s)
++ {
++   int n;
++ 
++diff --git a/user/user.h b/user/user.h
++index e7b6a22..c15233c 100644
++--- a/user/user.h
+++++ b/user/user.h
++@@ -1,3 +1,4 @@
+++
++ struct stat;
++ struct rtcdate;
++ 
 diff --git a/kernel/exec.c b/kernel/exec.c
 index 614f7ca..073d1b4 100644
 --- a/kernel/exec.c
@@ -152,6 +472,142 @@ index 614f7ca..073d1b4 100644
    }
    
    return 0;
+diff --git a/user/find.c b/user/find.c
+new file mode 100644
+index 0000000..f59489b
+--- /dev/null
++++ b/user/find.c
+@@ -0,0 +1,113 @@
++/* find all the files in a directory tree with a specific name.*/
++
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/fs.h"
++
++char *
++only_name(char *path)
++{
++    char *p;
++
++    // Find first character after last slash.
++    for (p = path + strlen(path); p >= path && *p != '/'; p--)
++        ;
++    p++;
++
++    return p;
++}
++
++int find(char *dir_path, char *file_name)
++{
++
++    static int flag_check_dir = 1;
++    static int flag_found = 0;
++    char buf[512], *p;
++    int fd;
++    struct dirent de;
++    struct stat st;
++
++    if ((fd = open(dir_path, 0)) < 0)
++    {
++        fprintf(2, "find: cannot open %s\n", dir_path);
++        return 0;
++    }
++
++    if (fstat(fd, &st) < 0)
++    {
++        fprintf(2, "find: cannot stat %s\n", dir_path);
++        close(fd);
++        return 0;
++    }
++    // memmove(buf,dir_path,strlen(dir_path));
++    // printf("%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
++    switch (st.type)
++    {
++    case T_FILE:
++        if (flag_check_dir)
++        {
++            printf("The first argument %s should be a directory!\n", dir_path);
++            exit();
++        }
++        // for now, the dir_path is not a dir, but a file
++        // We're going to compare the names.
++        if (strcmp(only_name(dir_path), file_name) == 0)
++        {
++            // printf("Found!\n");
++            printf("%s\n", dir_path);
++            flag_found += 1;
++            return flag_found;
++        }
++        break;
++
++    case T_DIR:
++        flag_check_dir = 0;
++        if (strlen(dir_path) + 1 + DIRSIZ + 1 > sizeof buf)
++        {
++            printf("ls: path too long\n");
++            break;
++        }
++        strcpy(buf, dir_path);
++        p = buf + strlen(buf);
++        *p++ = '/';
++        // I think there's no \0 in the end
++        while (read(fd, &de, sizeof(de)) == sizeof(de))
++        {
++            if (de.inum == 0)
++                continue;
++            if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
++                continue;
++            memmove(p, de.name, DIRSIZ);
++            p[DIRSIZ] = 0; // set '\0'
++            if (stat(buf, &st) < 0)
++            {
++                printf("ls: cannot stat %s\n", buf);
++                continue;
++            }
++            // printf("%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
++            find(buf, file_name);
++        }
++        break;
++    }
++    close(fd);
++    return flag_found;
++}
++
++int main(int argc, char *argv[])
++// argv[1] should be the dir, argv[2] is the file
++{
++    // int i;
++    int find_count;
++
++    if (argc != 3)
++    {
++        printf("Error: not the right arg number.\n");
++        exit();
++    }
++    // printf("first arg: %s, second: %s\n",argv[1],argv[2]);
++    find_count = find(argv[1], argv[2]);
++    if (find_count == 0)
++        printf("Found nothing.\n");
++    exit();
++}
+diff --git a/user/helloworld.c b/user/helloworld.c
+new file mode 100644
+index 0000000..b39fd8e
+--- /dev/null
++++ b/user/helloworld.c
+@@ -0,0 +1,10 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++int main()
++{
++    
++    printf("hello world!\n");
++
++    exit();
++}
+\ No newline at end of file
 diff --git a/user/ls.c b/user/ls.c
 index 5847555..fa4d19f 100644
 --- a/user/ls.c
@@ -199,6 +655,79 @@ index dde17be..d29c607 100644
      if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
        // Chdir must be called by the parent, not the child.
        buf[strlen(buf)-1] = 0;  // chop \n
+diff --git a/user/sleep.c b/user/sleep.c
+new file mode 100644
+index 0000000..70c3ab0
+--- /dev/null
++++ b/user/sleep.c
+@@ -0,0 +1,17 @@
++#include "kernel/types.h"
++#include "user/user.h"
++#include "kernel/param.h"
++int main(int argc, char *argv[])
++{
++    if(argc!=2)
++    {
++        printf("Error! invalid arg numbers.");
++        exit();
++    }
++    int ticks;
++    ticks = atoi(argv[1]);
++    // printf("start sleep\n");
++    sleep(ticks);
++    // printf("sleep ends");
++    exit();
++}
+\ No newline at end of file
+diff --git a/user/test_exec.c b/user/test_exec.c
+new file mode 100644
+index 0000000..7519b00
+--- /dev/null
++++ b/user/test_exec.c
+@@ -0,0 +1,42 @@
++// exec() receives an arglist that ends with 0.
++
++#include "kernel/types.h"
++#include "user/user.h" // exec fork
++#include "kernel/param.h"
++
++struct execcmd {
++  int type;
++  char *argv[MAXARG];
++  char *eargv[MAXARG];
++};
++int main(int argc, char** argv)
++{
++    struct execcmd ecmdd;
++    struct execcmd *ecmd = &ecmdd;
++    ecmd->argv[0]="echo";
++    ecmd->argv[1]= "hello";
++    ecmd->argv[2]= "world";
++    
++    char* list[4];
++    list[0] = "echo";
++    list[1] = "hello";
++    list[2] = "world";
++    list[3] = 0; // if we don't add this, exec fails.
++    if(fork()==0)
++    {
++        int a = 100;
++        // exec(ecmd->argv[0],ecmd->argv);
++        a = exec(list[0], list);
++        printf("child ends with exec %d\n", a);
++        exit();
++    }
++    else
++    {
++        wait();
++        printf("parent ends\n");
++    }
++    
++    exit();
++
++
++}
+\ No newline at end of file
 diff --git a/user/ulib.c b/user/ulib.c
 index ddda0f5..e1be04b 100644
 --- a/user/ulib.c
@@ -230,3 +759,241 @@ index e7b6a22..c15233c 100644
  struct stat;
  struct rtcdate;
  
+diff --git a/user/verylongggggggggggggggggg b/user/verylongggggggggggggggggg
+new file mode 100755
+index 0000000..e6223de
+Binary files /dev/null and b/user/verylongggggggggggggggggg differ
+diff --git a/user/verylongggggggggggggggggg.c b/user/verylongggggggggggggggggg.c
+new file mode 100644
+index 0000000..6fd28e9
+--- /dev/null
++++ b/user/verylongggggggggggggggggg.c
+@@ -0,0 +1 @@
++// this file is created to test ls.
+\ No newline at end of file
+diff --git a/user/xargs.c b/user/xargs.c
+new file mode 100644
+index 0000000..93e46ed
+--- /dev/null
++++ b/user/xargs.c
+@@ -0,0 +1,103 @@
++/*To make xargs on UNIX behave the way we want it to for this lab,
++please run it with the -n option set to 1.*/
++/*To read individual lines of input,
++read a character at a time until a newline ('\n') appears.*/
++
++/*We don't worry about pipe, see book p14.
++if I get it all correct, the pipe automatically pass the result as
++an arg in the end of the arg list.*/
++//->>>> no, use read!
++// NO! ABOVE IS WRONG
++// I AM TRING TO USE READ THEN
++// CAUSE THE LEFT PIPE SHOULD WRITE IN 0
++
++#include "kernel/types.h"
++#include "user/user.h" // exec fork
++#include "kernel/param.h"
++
++#define NUMBER_PER_EXEC 1 // the -n option set to 1
++
++// VERY IMPORTENT! ONLY BY PASSING THE STRUCT CAN EXEC WORK PROPERLY//
++struct execcmd
++{
++    int type;
++    char *argv[MAXARG];
++    char *eargv[MAXARG];
++};
++
++// the first arg is "argx" argv[0], then a command argv[1]
++int main(int argc, char **argv)
++{
++    char buf[512] = {0}; // buf is the string we need to process.
++    read(0, buf, sizeof(buf));
++    // close(0); // is it necessary?
++    if (argc < 2)
++    {
++        printf("Not enough args.\n");
++        exit();
++    }
++    // We need to us READ !
++    if (fork() == 0) // child
++    {
++        // the idea is using exec
++        // the exec's args are the ones we seperated by \n
++        // use malloc to get memory
++        struct execcmd ecmdd;
++        struct execcmd *ecmd = &ecmdd;
++        int arg_number = 0;   // count
++        int arg_number_r = 0; // to record how many args we have in the right side originally
++        char *p = buf;        // end
++        char *s = buf;        // start
++        int loop_count = 1;
++        memset(ecmd->argv, sizeof(ecmd->argv), 0);
++
++        for (int i = 1; i < argc; i++)
++        {
++            ecmd->argv[arg_number] = argv[i];
++            arg_number++;
++        }
++        arg_number_r = arg_number - 1; // less equal than arg_number_r needs to be remained.
++
++        for (; *p != 0 && arg_number < MAXARG; arg_number++, loop_count++) // if more args, ignore.
++        {
++            for (; *p != '\n' && *p != ' ' && *p != '\0'; p++)
++            {
++                ; // find one argument, where p points to the '\n'
++            }
++
++            int length = p - s + 1; // \n and \0
++            char *one_arg = (char *)malloc(sizeof(char) * length);
++            memmove(one_arg, s, length);
++            one_arg[length - 1] = 0; // end with \0
++            ecmd->argv[arg_number] = one_arg;
++
++            /******************ADD TO EXEC ONE AG AT A TIME*********************/
++            if (loop_count % NUMBER_PER_EXEC == 0 && fork() == 0) // child
++            {
++                exec(ecmd->argv[0], ecmd->argv);
++                exit();
++            }
++            if (loop_count % NUMBER_PER_EXEC == 0) // parent
++            {
++                arg_number = arg_number_r;
++            }
++            /**********************************************************************/
++            wait();
++            if (*p == '\0')
++            {
++                break;
++            }
++            else
++            {
++                p++;
++                s = p;
++            }
++        }
++        exit();
++    }
++    else
++    {
++        wait();
++    }
++    exit();
++}
+diff --git a/user/xargs2.c b/user/xargs2.c
+new file mode 100644
+index 0000000..81f44f8
+--- /dev/null
++++ b/user/xargs2.c
+@@ -0,0 +1,111 @@
++/*This version will doesn't have the -n 1*/
++
++/*To make xargs on UNIX behave the way we want it to for this lab,
++please run it with the -n option set to 1.*/
++/*To read individual lines of input,
++read a character at a time until a newline ('\n') appears.*/
++
++/*We don't worry about pipe, see book p14.
++if I get it all correct, the pipe automatically pass the result as
++an arg in the end of the arg list.*/
++// NO! ABOVE IS WRONG
++// I AM TRING TO USE READ THEN
++// CAUSE THE LEFT PIPE SHOULD WRITE IN 0
++
++#include "kernel/types.h"
++#include "user/user.h" // exec fork
++#include "kernel/param.h"
++
++// VERY IMPORTENT! ONLY BY PASSING THE STRUCT CAN EXEC WORK PROPERLY//
++struct execcmd
++{
++    int type;
++    char *argv[MAXARG];
++    char *eargv[MAXARG];
++};
++
++// the first arg is "argx" argv[0], then a command argv[1]
++int main(int argc, char **argv)
++{
++    // printf("start x\n");
++    // char* kk[2];
++    // kk[0] = "echo";
++    // kk[1] = "testeccho\n";
++    // exec(kk[0],kk);
++    // printf("\n done \n");
++    char buf[512] = {0}; // buf is the string we need to process.
++    read(0, buf, sizeof(buf));
++    // close(0); // is it necessary?
++    // printf("\n");
++    // printf("the buf is %s\n", buf);
++    if (argc < 2)
++    {
++        printf("Not enough args.\n");
++        exit();
++    }
++    // printf("%s\n", argv[1]);
++
++    // We need to us READ !
++
++    if (fork() == 0) // child
++    {
++        // the idea is using exec
++        // the exec's args are the ones we seperated by \n
++        // use malloc to get memory
++        struct execcmd ecmdd;
++        struct execcmd *ecmd = &ecmdd;
++        // printf("in child process\n");
++        int arg_number = 0; // count
++        char *p = buf;      // end
++        char *s = buf;      // start
++        // char *argvlist[MAXARG] = {0}; // do we need to -1 because it's not the first arg?
++        memset(ecmd->argv, sizeof(ecmd->argv), 0);
++        // printf("sizeof(ecmd->argv) = %d\n",sizeof(ecmd->argv));
++
++        for (int i = 1; i < argc; i++)
++        {
++            ecmd->argv[arg_number] = argv[i];
++            arg_number++;
++        }
++
++        for (; *p != 0 && arg_number < MAXARG; arg_number++) // if more args, ignore.
++        {
++            // printf("in loop arg number = %d\n", arg_number);
++            for (; *p != '\n' && *p != ' ' && *p != '\0'; p++)
++            {
++                // printf("%c,,\\%d\n", *p,*p);
++                ; // find one argument, where p points to the '\n'
++            }
++
++            int length = p - s + 1 ; // \n and \0
++            char *one_arg = (char *)malloc(sizeof(char) * length);
++            memmove(one_arg, s, length);
++            one_arg[length - 1] = 0; // end with \0
++            ecmd->argv[arg_number] = one_arg;
++            // printf("2: %c,,\\%d\n %s ", *p,*p,one_arg);
++            if (*p == '\0')
++            {
++                break;
++            }
++            else
++            {
++                p++;
++                s = p;
++            }
++        }
++        // printf("end loop \n");
++
++        // know we've got all the args, here begins the exec part.
++        //$ echo hi bye | xargs echo hello
++        // hello hi  bye
++        //We need to echo one at a time then.
++        
++        exec(ecmd->argv[0], ecmd->argv);
++        exit();
++    }
++    else
++    {
++        wait();
++    }
++    exit();
++}
